@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Fountain Designer</title>
+    <script src="https://cdn.jsdelivr.net/npm/p5@1.8.0/lib/p5.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #1a1a2e;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: Arial, sans-serif;
+        }
+        #canvas-container {
+            width: 100%;
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: center;
+            position: relative;
+        }
+        #ui-panel {
+            position: absolute;
+            right: 20px;
+            top: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 10px;
+            color: white;
+            width: 250px;
+            transition: all 0.3s ease;
+        }
+        #ui-panel.hidden {
+            transform: translateX(300px);
+            opacity: 0;
+        }
+        .control-group {
+            margin-bottom: 15px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+            padding-bottom: 10px;
+        }
+        .control-group h3 {
+            margin: 0 0 10px 0;
+            font-size: 16px;
+            color: #e94560;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 14px;
+        }
+        input[type="range"] {
+            width: 100%;
+            margin-bottom: 10px;
+        }
+        button {
+            background: #e94560;
+            border: none;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 5px;
+            font-size: 14px;
+        }
+        button:hover {
+            background: #ff6b81;
+        }
+        #toggle-ui {
+            position: absolute;
+            right: 20px;
+            top: 20px;
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            font-size: 20px;
+            cursor: pointer;
+        }
+        .value-display {
+            font-size: 12px;
+            color: #aaa;
+            text-align: right;
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas-container"></div>
+    <button id="toggle-ui">☰</button>
+    <div id="ui-panel">
+        <div class="control-group">
+            <h3>Fountain Design</h3>
+            <label for="tiers">Tiers</label>
+            <input type="range" id="tiers" min="1" max="5" step="1" value="3">
+            <div class="value-display" id="tiers-value">3</div>
+            
+            <label for="nozzles">Nozzles</label>
+            <input type="range" id="nozzles" min="1" max="12" step="1" value="6">
+            <div class="value-display" id="nozzles-value">6</div>
+        </div>
+        
+        <div class="control-group">
+            <h3>Water Properties</h3>
+            <label for="pressure">Pressure</label>
+            <input type="range" id="pressure" min="0.1" max="2" step="0.1" value="1">
+            <div class="value-display" id="pressure-value">1.0</div>
+            
+            <label for="viscosity">Viscosity</label>
+            <input type="range" id="viscosity" min="0.1" max="2" step="0.1" value="0.8">
+            <div class="value-display" id="viscosity-value">0.8</div>
+        </div>
+        
+        <div class="control-group">
+            <h3>Environment</h3>
+            <label for="gravity">Gravity</label>
+            <input type="range" id="gravity" min="0.1" max="2" step="0.1" value="1">
+            <div class="value-display" id="gravity-value">1.0</div>
+            
+            <label for="wind">Wind</label>
+            <input type="range" id="wind" min="-1" max="1" step="0.1" value="0">
+            <div class="value-display" id="wind-value">0.0</div>
+        </div>
+        
+        <div class="control-group">
+            <h3>Appearance</h3>
+            <label for="water-color">Water Color</label>
+            <input type="color" id="water-color" value="#4cc9f0">
+            
+            <label for="material">Material</label>
+            <select id="material">
+                <option value="marble">Marble</option>
+                <option value="bronze">Bronze</option>
+                <option value="stone">Stone</option>
+                <option value="concrete">Concrete</option>
+            </select>
+        </div>
+        
+        <div style="display: flex; justify-content: space-between;">
+            <button id="reset">Reset</button>
+            <button id="randomize">Randomize</button>
+        </div>
+    </div>
+
+    <script>
+        const sketch = (p) => {
+            let particles = [];
+            let nozzlePositions = []; // Store nozzle positions
+            let fountain = {
+                tiers: 3,
+                nozzles: 6,
+                radius: 150,
+                height: 200,
+                material: 'marble',
+                color: '#ffffff'
+            };
+            let water = {
+                pressure: 1.0,
+                viscosity: 0.8,
+                color: '#4cc9f0'
+            };
+            let environment = {
+                gravity: 1.0,
+                wind: 0.0
+            };
+            let lastEmitTime = 0;
+            let emitInterval = 50;
+            let canvas;
+            let showUI = true;
+            
+            p.setup = () => {
+                canvas = p.createCanvas(p.windowWidth * 0.9, p.windowHeight * 0.8, p.WEBGL);
+                canvas.parent('canvas-container');
+                p.colorMode(p.RGB);
+                
+                // Setup UI controls
+                setupUIControls();
+                
+                // Setup materials
+                updateFountainMaterial();
+                
+                // Calculate nozzle positions
+                updateNozzlePositions();
+            };
+            
+            p.draw = () => {
+                p.background(26, 26, 46);
+                p.orbitControl();
+                
+                // Lighting
+                p.ambientLight(60);
+                p.directionalLight(255, 255, 255, -1, 1, -1);
+                p.pointLight(200, 200, 255, 0, -100, 100);
+                
+                // Draw fountain base
+                drawFountain();
+                
+                // Update and draw particles
+                updateParticles();
+                
+                // Emit new particles
+                if (p.millis() - lastEmitTime > emitInterval) {
+                    emitParticles();
+                    lastEmitTime = p.millis();
+                }
+            };
+            
+            function updateNozzlePositions() {
+                nozzlePositions = [];
+                
+                for (let i = 0; i < fountain.tiers - 1; i++) {
+                    const tierHeight = fountain.height * 0.8 / fountain.tiers;
+                    const tierRadius = fountain.radius * (1 - i * 0.2);
+                    const yPos = fountain.height/2 - i * tierHeight * 1.2 - tierHeight * 0.6;
+                    
+                    let tierNozzles = [];
+                    for (let j = 0; j < fountain.nozzles; j++) {
+                        const angle = p.TWO_PI * j / fountain.nozzles;
+                        const x = tierRadius * 0.9 * p.cos(angle);
+                        const z = tierRadius * 0.9 * p.sin(angle);
+                        
+                        tierNozzles.push({
+                            position: p.createVector(x, yPos, z),
+                            angle: angle,
+                            tier: i
+                        });
+                    }
+                    nozzlePositions.push(tierNozzles);
+                }
+            }
+            
+            function drawFountain() {
+                p.push();
+                
+                // Draw each tier
+                for (let i = 0; i < fountain.tiers; i++) {
+                    const tierHeight = fountain.height * 0.8 / fountain.tiers;
+                    const tierRadius = fountain.radius * (1 - i * 0.2);
+                    const yPos = fountain.height/2 - i * tierHeight * 1.2;
+                    
+                    // Tier base
+                    p.push();
+                    p.translate(0, yPos, 0);
+                    p.fill(fountain.color);
+                    p.cylinder(tierRadius, tierHeight * 0.2);
+                    p.pop();
+                    
+                    // Tier bowl
+                    p.push();
+                    p.translate(0, yPos - tierHeight * 0.4, 0);
+                    p.fill(fountain.color);
+                    p.ellipsoid(tierRadius * 1.1, tierHeight * 0.3, tierRadius * 1.1);
+                    p.pop();
+                    
+                    // Nozzles
+                    if (i < fountain.tiers - 1) {
+                        for (let j = 0; j < fountain.nozzles; j++) {
+                            const angle = p.TWO_PI * j / fountain.nozzles;
+                            const x = tierRadius * 0.9 * p.cos(angle);
+                            const z = tierRadius * 0.9 * p.sin(angle);
+                            
+                            p.push();
+                            p.translate(x, yPos - tierHeight * 0.6, z);
+                            p.fill(80);
+                            p.cylinder(5, 10);
+                            p.pop();
+                        }
+                    }
+                }
+                
+                p.pop();
+            }
+            
+            function emitParticles() {
+                // Create new particles from each nozzle
+                for (let tierNozzles of nozzlePositions) {
+                    for (let nozzle of tierNozzles) {
+                        // Calculate pressure based on tier (higher tiers have more pressure)
+                        const tierPressureFactor = 1 + (nozzle.tier * 0.2);
+                        const nozzlePressure = water.pressure * tierPressureFactor;
+                        
+                        // Number of particles based on pressure
+                        const particleCount = Math.ceil(nozzlePressure * 2);
+                        
+                        for (let i = 0; i < particleCount; i++) {
+                            // Create particles with initial velocity
+                            const angle = nozzle.angle + p.random(-0.2, 0.2);
+                            const spreadFactor = 0.4 - (nozzle.tier * 0.1); // Higher tiers have less spread
+                            
+                            const velocity = p.createVector(
+                                nozzlePressure * spreadFactor * p.cos(angle) + environment.wind * 0.5,
+                                -nozzlePressure * (1 + p.random(-0.2, 0.2)),
+                                nozzlePressure * spreadFactor * p.sin(angle)
+                            );
+                            
+                            particles.push({
+                                position: nozzle.position.copy(), // Exact nozzle position
+                                velocity: velocity,
+                                radius: p.random(2, 4),
+                                life: 100 + p.random(50) * nozzlePressure,
+                                maxLife: 150 + p.random(50) * nozzlePressure,
+                                color: p.color(water.color),
+                                nozzlePosition: nozzle.position.copy(), // Store the origin for reference
+                                tier: nozzle.tier
+                            });
+                        }
+                    }
+                }
+            }
+            
+            function updateParticles() {
+                for (let i = particles.length - 1; i >= 0; i--) {
+                    const particle = particles[i];
+                    
+                    // Apply physics
+                    particle.velocity.y += 0.02 * environment.gravity;
+                    particle.velocity.x += environment.wind * 0.01;
+                    particle.velocity.mult(1 - water.viscosity * 0.01);
+                    particle.position.add(particle.velocity);
+                    
+                    // Check collision with lower tiers
+                    checkTierCollisions(particle);
+                    
+                    // Reduce life
+                    particle.life--;
+                    
+                    // Remove dead particles or particles that fell off
+                    if (particle.life <= 0 || particle.position.y > fountain.height/2 + 50) {
+                        particles.splice(i, 1);
+                        continue;
+                    }
+                    
+                    // Draw particle
+                    p.push();
+                    p.translate(particle.position.x, particle.position.y, particle.position.z);
+                    p.noStroke();
+                    const alpha = p.map(particle.life, 0, particle.maxLife, 0, 200);
+                    particle.color.setAlpha(alpha);
+                    p.fill(particle.color);
+                    p.sphere(particle.radius);
+                    p.pop();
+                }
+            }
+            
+            function checkTierCollisions(particle) {
+                // Skip first tier (where particle originated)
+                for (let i = particle.tier + 1; i < fountain.tiers; i++) {
+                    const tierHeight = fountain.height * 0.8 / fountain.tiers;
+                    const tierY = fountain.height/2 - i * tierHeight * 1.2 - tierHeight * 0.4;
+                    const tierRadius = fountain.radius * (1 - i * 0.2) * 1.1;
+                    
+                    // Check if particle is at the tier height
+                    if (particle.position.y > tierY - 5 && particle.position.y < tierY + 5) {
+                        // Check if particle is within tier radius
+                        const distFromCenter = Math.sqrt(
+                            particle.position.x * particle.position.x + 
+                            particle.position.z * particle.position.z
+                        );
+                        
+                        if (distFromCenter < tierRadius) {
+                            // Bounce with dampening
+                            particle.velocity.y *= -0.5;
+                            particle.velocity.x *= 0.8;
+                            particle.velocity.z *= 0.8;
+                            
+                            // Slightly randomize for splash effect
+                            particle.velocity.x += p.random(-0.5, 0.5);
+                            particle.velocity.z += p.random(-0.5, 0.5);
+                            
+                            // Create splash particles
+                            if (p.random() < 0.3) {
+                                for (let j = 0; j < 3; j++) {
+                                    const splashVel = p.createVector(
+                                        p.random(-1, 1),
+                                        p.random(-1, 0),
+                                        p.random(-1, 1)
+                                    );
+                                    
+                                    particles.push({
+                                        position: particle.position.copy(),
+                                        velocity: splashVel,
+                                        radius: particle.radius * 0.7,
+                                        life: particle.life * 0.5,
+                                        maxLife: particle.maxLife * 0.5,
+                                        color: particle.color,
+                                        nozzlePosition: particle.nozzlePosition,
+                                        tier: i // Assign current tier
+                                    });
+                                }
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            function setupUIControls() {
+                // Toggle UI button
+                p.select('#toggle-ui').mouseClicked(() => {
+                    showUI = !showUI;
+                    p.select('#ui-panel').toggleClass('hidden');
+                });
+                
+                // Fountain design controls
+                p.select('#tiers').input((e) => {
+                    fountain.tiers = parseInt(e.target.value);
+                    p.select('#tiers-value').html(fountain.tiers);
+                    updateNozzlePositions();
+                });
+                
+                p.select('#nozzles').input((e) => {
+                    fountain.nozzles = parseInt(e.target.value);
+                    p.select('#nozzles-value').html(fountain.nozzles);
+                    updateNozzlePositions();
+                });
+                
+                // Water properties
+                p.select('#pressure').input((e) => {
+                    water.pressure = parseFloat(e.target.value);
+                    p.select('#pressure-value').html(water.pressure.toFixed(1));
+                    emitInterval = p.map(water.pressure, 0.1, 2, 100, 30);
+                });
+                
+                p.select('#viscosity').input((e) => {
+                    water.viscosity = parseFloat(e.target.value);
+                    p.select('#viscosity-value').html(water.viscosity.toFixed(1));
+                });
+                
+                // Environment
+                p.select('#gravity').input((e) => {
+                    environment.gravity = parseFloat(e.target.value);
+                    p.select('#gravity-value').html(environment.gravity.toFixed(1));
+                });
+                
+                p.select('#wind').input((e) => {
+                    environment.wind = parseFloat(e.target.value);
+                    p.select('#wind-value').html(environment.wind.toFixed(1));
+                });
+                
+                // Appearance
+                p.select('#water-color').input((e) => {
+                    water.color = e.target.value;
+                });
+                
+                p.select('#material').changed((e) => {
+                    fountain.material = e.target.value;
+                    updateFountainMaterial();
+                });
+                
+                // Action buttons
+                p.select('#reset').mouseClicked(() => {
+                    resetToDefaults();
+                });
+                
+                p.select('#randomize').mouseClicked(() => {
+                    randomizeParameters();
+                });
+            }
+            
+            function updateFountainMaterial() {
+                switch(fountain.material) {
+                    case 'marble':
+                        fountain.color = '#e0e0e0';
+                        break;
+                    case 'bronze':
+                        fountain.color = '#cd7f32';
+                        break;
+                    case 'stone':
+                        fountain.color = '#808080';
+                        break;
+                    case 'concrete':
+                        fountain.color = '#a3a3a3';
+                        break;
+                }
+            }
+            
+            function resetToDefaults() {
+                fountain.tiers = 3;
+                fountain.nozzles = 6;
+                water.pressure = 1.0;
+                water.viscosity = 0.8;
+                environment.gravity = 1.0;
+                environment.wind = 0.0;
+                water.color = '#4cc9f0';
+                fountain.material = 'marble';
+                
+                // Update UI controls
+                p.select('#tiers').value(fountain.tiers);
+                p.select('#tiers-value').html(fountain.tiers);
+                p.select('#nozzles').value(fountain.nozzles);
+                p.select('#nozzles-value').html(fountain.nozzles);
+                p.select('#pressure').value(water.pressure);
+                p.select('#pressure-value').html(water.pressure.toFixed(1));
+                p.select('#viscosity').value(water.viscosity);
+                p.select('#viscosity-value').html(water.viscosity.toFixed(1));
+                p.select('#gravity').value(environment.gravity);
+                p.select('#gravity-value').html(environment.gravity.toFixed(1));
+                p.select('#wind').value(environment.wind);
+                p.select('#wind-value').html(environment.wind.toFixed(1));
+                p.select('#water-color').value(water.color);
+                p.select('#material').value(fountain.material);
+                
+                updateFountainMaterial();
+                updateNozzlePositions();
+                emitInterval = 50;
+                
+                // Clear particles
+                particles = [];
+            }
+            
+            function randomizeParameters() {
+                fountain.tiers = p.floor(p.random(1, 6));
+                fountain.nozzles = p.floor(p.random(1, 13));
+                water.pressure = p.random(0.1, 2);
+                water.viscosity = p.random(0.1, 2);
+                environment.gravity = p.random(0.1, 2);
+                environment.wind = p.random(-1, 1);
+                water.color = p.color(
+                    p.random(100, 200),
+                    p.random(150, 255),
+                    p.random(200, 255)
+                ).toString('#rrggbb');
+                
+                const materials = ['marble', 'bronze', 'stone', 'concrete'];
+                fountain.material = materials[p.floor(p.random(materials.length))];
+                
+                // Update UI controls
+                p.select('#tiers').value(fountain.tiers);
+                p.select('#tiers-value').html(fountain.tiers);
+                p.select('#nozzles').value(fountain.nozzles);
+                p.select('#nozzles-value').html(fountain.nozzles);
+                p.select('#pressure').value(water.pressure);
+                p.select('#pressure-value').html(water.pressure.toFixed(1));
+                p.select('#viscosity').value(water.viscosity);
+                p.select('#viscosity-value').html(water.viscosity.toFixed(1));
+                p.select('#gravity').value(environment.gravity);
+                p.select('#gravity-value').html(environment.gravity.toFixed(1));
+                p.select('#wind').value(environment.wind);
+                p.select('#wind-value').html(environment.wind.toFixed(1));
+                p.select('#water-color').value(water.color);
+                p.select('#material').value(fountain.material);
+                
+                updateFountainMaterial();
+                updateNozzlePositions();
+                emitInterval = p.map(water.pressure, 0.1, 2, 100, 30);
+                
+                // Clear particles
+                particles = [];
+            }
+            
+            p.windowResized = () => {
+                p.resizeCanvas(p.windowWidth * 0.9, p.windowHeight * 0.8);
+                updateNozzlePositions();
+            };
+        };
+        
+        new p5(sketch);
+    </script>
+</body>
+</html>
